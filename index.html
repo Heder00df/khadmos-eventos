@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <title>Eventos no Mapa - KHΔDMΩS</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <!-- MarkerCluster CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.css" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster/dist/MarkerCluster.Default.css" />
+  <style>
+    :root {
+      --bg-primary: #121212;
+      --bg-secondary: #1e1e1e;
+      --bg-card: #2a2a2a;
+      --color-text: #ffffff;
+      --color-accent: #4fc3f7;
+    }
+    [data-theme="light"] {
+      --bg-primary: #ffffff;
+      --bg-secondary: #f5f5f5;
+      --bg-card: #ffffff;
+      --color-text: #333333;
+      --color-accent: #007bff;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; display: flex; flex-direction: column; height: 100vh;
+      font-family: sans-serif; background: var(--bg-primary); color: var(--color-text);
+    }
+    header {
+      background: var(--bg-secondary); padding: 0.75rem 1rem; display: flex; align-items: center; justify-content: space-between;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.4);
+    }
+    header .logo { font-size: 1.25rem; font-weight: bold; cursor: default; }
+    header .controls { display: flex; align-items: center; gap: 1rem; }
+    header input[type="text"] {
+      padding: 0.5rem; border: none; border-radius: 4px; width: 200px;
+      background: var(--bg-card); color: var(--color-text);
+    }
+    header button {
+      background: none; border: 1px solid var(--color-text); padding: 0.5rem; border-radius: 4px;
+      color: var(--color-text); cursor: pointer;
+    }
+    #content { display: flex; flex: 1; overflow: hidden; }
+    #sidebar {
+      width: 300px; background: var(--bg-secondary); padding: 1rem; overflow-y: auto; border-right: 1px solid #333;
+    }
+    #map { flex: 1; }
+    .card {
+      background: var(--bg-card); padding: 1rem; margin-bottom: 1rem; border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.4); cursor: pointer; transition: transform 0.2s;
+    }
+    .card:hover { transform: scale(1.02); }
+    .card h3 { margin: 0 0 0.5rem; }
+    .card a { color: var(--color-accent); text-decoration: none; }
+    .thumbnail { width: 100%; border-radius: 8px; margin-top: 0.5rem; }
+    #modal { display: none; position: fixed; z-index: 9999; inset: 0;
+      background: rgba(0,0,0,0.8); justify-content: center; align-items: center;
+    }
+    #modal img { max-width: 90%; max-height: 90%; border-radius: 10px; }
+  </style>
+</head>
+<body data-theme="dark">
+  <header>
+    <div class="logo">KHΔDMΩS Eventos</div>
+    <div class="controls">
+      <input type="text" id="search" placeholder="Buscar eventos..." />
+      <button id="theme-toggle">Modo Claro</button>
+      <button id="locate">Minha Localização</button>
+    </div>
+  </header>
+
+  <div id="content">
+    <aside id="sidebar"></aside>
+    <section id="map"></section>
+  </div>
+
+  <div id="modal" onclick="this.style.display='none'">
+    <img id="modal-img" src="" alt="Visualização ampliada" />
+  </div>
+
+  <!-- Scripts -->
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+  <script src="https://unpkg.com/leaflet.markercluster/dist/leaflet.markercluster.js"></script>
+  <script>
+    // Initialize map
+    const map = L.map('map').setView([-15.7801, -47.9292], 4);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap contributors' }).addTo(map);
+
+    // Event data
+    const eventos = [
+      { nome: "AgroBrasília 2025", coords: [-15.7254475, -47.7218659], link: "https://agrobrasilia.com.br", rota: "https://www.google.com/maps/dir/?api=1&destination=-15.7254475,-47.7218659", planta: "https://drive.google.com/uc?export=view&id=1mXXkQfqwK1cHbntTJNykOzJI7vGO6jAQ" },
+      { nome: "Campus Party Brasil", coords: [-23.647958, -46.630531], link: "https://brasil.campus-party.org/home-2025/", rota: "https://www.google.com/maps/dir/?api=1&destination=-23.647958,-46.630531", planta: "https://via.placeholder.com/300x200?text=Planta+Campus+Party" },
+      { nome: "Congresso ABRANT", coords: [-8.0476, -34.877], link: "#", rota: "https://www.google.com/maps/dir/?api=1&destination=-8.0476,-34.877", planta: "https://via.placeholder.com/300x200?text=Planta+ABRANT" },
+      { nome: "E-Tech Brasil", coords: [-25.4284, -49.2733], link: "#", rota: "https://www.google.com/maps/dir/?api=1&destination=-25.4284,-49.2733", planta: "https://via.placeholder.com/300x200?text=Planta+E-Tech" },
+      { nome: "Feira Verde Sustentável", coords: [-1.4558, -48.4902], link: "#", rota: "https://www.google.com/maps/dir/?api=1&destination=-1.4558,-48.4902", planta: "https://via.placeholder.com/300x200?text=Planta+Feira+Verde" }
+    ];
+
+    // Create marker cluster group
+    const markersGroup = L.markerClusterGroup();
+    const sidebar = document.getElementById('sidebar');
+    const searchInput = document.getElementById('search');
+
+    let markers = [];
+    eventos.forEach((e, i) => {
+      const marker = L.marker(e.coords)
+        .bindPopup(`<b>${e.nome}</b><br><a href="${e.link}" target="_blank">Ver Evento</a><br><a href="${e.rota}" target="_blank">Rota</a>`);
+      markersGroup.addLayer(marker);
+      markers.push({ marker, data: e });
+
+      // Create card
+      const card = document.createElement('div');
+      card.className = 'card';
+      card.dataset.index = i;
+      card.innerHTML = `
+        <h3>${e.nome}</h3>
+        <p><a href="${e.link}" target="_blank">Ver evento</a></p>
+        <img class="thumbnail" src="${e.planta}" alt="Planta do evento" onclick="event.stopPropagation(); abrirModal('${e.planta}')" />
+      `;
+      card.addEventListener('click', () => focusEvento(i));
+      sidebar.appendChild(card);
+    });
+    map.addLayer(markersGroup);
+
+    function focusEvento(index) {
+      const { marker, data } = markers[index];
+      map.setView(data.coords, 14);
+      marker.openPopup();
+    }
+
+    // Search filter
+    searchInput.addEventListener('input', () => {
+      const term = searchInput.value.toLowerCase();
+      sidebar.querySelectorAll('.card').forEach(card => {
+        const idx = card.dataset.index;
+        const match = eventos[idx].nome.toLowerCase().includes(term);
+        card.style.display = match ? 'block' : 'none';
+        if (match) markersGroup.addLayer(markers[idx].marker);
+        else markersGroup.removeLayer(markers[idx].marker);
+      });
+    });
+
+    // Modal image
+    window.abrirModal = src => {
+      const modal = document.getElementById('modal');
+      const img = document.getElementById('modal-img');
+      img.src = src;
+      modal.style.display = 'flex';
+    };
+
+    // Theme toggle
+    const themeBtn = document.getElementById('theme-toggle');
+    themeBtn.addEventListener('click', () => {
+      const html = document.body;
+      if (html.getAttribute('data-theme') === 'dark') {
+        html.setAttribute('data-theme', 'light');
+        themeBtn.textContent = 'Modo Escuro';
+      } else {
+        html.setAttribute('data-theme', 'dark');
+        themeBtn.textContent = 'Modo Claro';
+      }
+    });
+
+    // Geolocate user
+    document.getElementById('locate').addEventListener('click', () => {
+      map.locate({ setView: true, maxZoom: 12 });
+    });
+    map.on('locationerror', () => alert('Não foi possível obter localização.'));
+  </script>
+</body>
+</html>
